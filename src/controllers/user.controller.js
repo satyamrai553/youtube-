@@ -5,6 +5,22 @@ import { uploadOnCloudinary } from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 
 
+const generateAccessAndRefreshToken = async (userId)=>{
+  try {
+   const user = await User.findById(userId);
+   const accessToken = user.generateAcessToken()
+   const refreshToken = user.generateRefreshToken()
+
+   user.refreshTOken = refreshTOken
+   await user.save({validateBeforeSave: false})
+
+  return {accessToken, refreshToken}  
+
+  } catch (error) {
+    throw new ApiError(500,"Something went wrong while generating refresh and access token")
+  }
+}
+
 const registerUser = asyncHandler(async(req,res)=>{
   //get user details from frontend
   //validation- not empty
@@ -18,7 +34,7 @@ const registerUser = asyncHandler(async(req,res)=>{
 
 
   const {fullName,email,userName,password} = req.body
-  console.log("email: ", email);
+  // console.log("email: ", email);
 
   if(
     [fullName,email,userName,password].some((field)=> field?.trim() === "")
@@ -80,5 +96,89 @@ if (req.files && Array.isArray(req.files.coverImage) && req.files.coverImage.len
 
 })
 
+const loginUser = asyncHandler(async (req,res)=>{
+  //req body ->data
+  //username or email
+  //find the user
+  //check for password
+  //generate accesstoken and refresh token
+  //send cookies
 
-export {registerUser}
+
+  const {email,userName,password} = req.body
+
+
+  if(!userName || !email){
+    throw new ApiError(400, "Username or email is required")
+  }
+
+  const user = User.findOne({
+    $or:[{userName},{email}]
+  })
+
+  if(!user){
+    throw new ApiError(404,"User dose not exist")
+  }
+
+  const isPasswordValid = await user.isPasswordCorrect(password)
+
+  if(!isPasswordValid){
+    throw new ApiError(401,"Password is Incorrect")
+  }
+
+  const {accessToken,refreshToken} = await generateAccessAndRefreshToken(user._id)
+
+  const loggedInUser = await User.findById(user._id).select("-password -refreshToken")
+  const options = {
+    httpOnly: true,
+    secure: true
+  }
+
+  return res
+  .status(200)
+  .cookie("accessToken", accessToken, options)
+  .cookie("refreshToken", refreshToken, options)
+  .json(
+    new ApiResponse(
+      200, 
+      {
+        user: loggedInUser,
+        refreshToken,
+      }, 
+      "User logged in successfully")
+  )
+  
+})
+
+const logoutUser = asyncHandler(async (req,res)=>{
+  //clear cookies
+  //remove refreshToken and accessToken
+  //send response
+  await User.findByIdAndUpdate(
+    req.user._id,
+    {
+      $set: {
+        refreshToken: undefined
+      }
+    },
+    {
+      new: true
+    }
+  )
+
+  const options = {
+    httpOnly: true,
+    secure: true
+  }
+  return res
+  .status(200)
+  .clearCookie("accessToken", options)
+  .clearCookie("refreshToken", options)
+  .json(new ApiResponse(200,{},"User logged out successfully"))
+})
+
+
+export {registerUser,
+  loginUser,
+  logoutUser,
+}

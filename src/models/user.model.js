@@ -71,7 +71,7 @@ userSchema.methods.generateAcessToken = function(){
         {
             _if:this._id,
              email: this.email,
-             username: this.usernaem,
+             userName: this.userName,
             fullName: this.fullName
 
         },
